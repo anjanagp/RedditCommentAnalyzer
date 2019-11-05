@@ -1,20 +1,22 @@
 #------------------------------------------------------------------------------#
 # Part 1 : Using the PRAW API to collect top comments of a subreddit
 # Part 2 : Create an Inverted Index to develop a Boolean Retrieval Model
-# Notes : Make topic(subreddit) a command line parameter
-#       : Create a class
+# Notes
+#       : Add error handling for invalid Command Line arg
+#       : Create a class (organize code)
 #       : Add a function for intersection of sets to handle boolean queries
 #       : Better pre-processing data, like tokenizing, etc
 #------------------------------------------------------------------------------#
-
+import os
+import sys
 import praw
 from nltk.corpus import stopwords
 
 stop_words = set(stopwords.words('english'))
 
 # Create reddit object using praw
-reddit = praw.Reddit(client_id='VznDMOLDMyeDfQ',
-                    client_secret='HlWz9w2XNfPlsHHwVZv6d2nlhdQ',
+reddit = praw.Reddit(client_id=os.getenv('CLIENT_ID'),
+                    client_secret=os.getenv('CLIENT_SECRET'),
                     user_agent='subSentiment')
 
 inverted_index = {} # where key is the term and value is the postings list
@@ -47,4 +49,6 @@ def collect_top_comments(topic, no_of_submissions=10):
                 no_of_comments_collected = no_of_comments_collected + 1
     return inverted_index
 
-index = collect_top_comments(topic='joker', no_of_submissions=10)
+index = collect_top_comments(topic= sys.argv[1], no_of_submissions=10)
+inverted_index.update({k: sorted(v) for k, v in inverted_index.items()}) # sorting postings list in ascending order of submission ID
+print("inverted index is ", inverted_index)
