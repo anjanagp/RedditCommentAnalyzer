@@ -115,7 +115,6 @@ for k, v in storage_object.items():
 final_index = Inverted_Index()
 for k,v in storage_object.items():
     final_index.index_comment(k, v)
-print (final_index.index)
 
 final_index.index.update({k: sorted(v) for k, v in final_index.index.items()}) # sorting postings list in ascending order of submission ID
-# print("inverted index is ", final_index.index)
+print("inverted index is ", final_index.index)
