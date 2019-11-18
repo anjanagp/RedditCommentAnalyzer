@@ -9,9 +9,13 @@
 import os
 import sys
 import praw
+import pprint
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
+from pymongo import MongoClient
+
+
 porter= PorterStemmer()
 stop_words = set(stopwords.words('english'))
 
@@ -40,6 +44,16 @@ class Fetcher:
             self.submission_ids.append(submission.id)
         return self.submission_ids
 
+    def get_submission_text(self, submission_id):
+        """
+        This function returns the submission title for the given
+        submission id
+        Returns:
+            submission text
+        """
+        submission = self.reddit.submission(id= submission_id)
+        return submission.title
+
     def get_submission_comment_ids(self, submission_id):
         """
         Fetches all the top level comments for the given submission id
@@ -54,6 +68,8 @@ class Fetcher:
         top_comment_ids = list(submission.comments)
         self.comment_id_storage[submission_id] = top_comment_ids
         return top_comment_ids
+
+
 
 class PreprocessData:
 
@@ -70,7 +86,7 @@ class PreprocessData:
         for w in words:
             if not w in stop_words:
                 preprocessed_comment.append(porter.stem(w))
-        return preprocessed_comment
+        return ' '.join(preprocessed_comment)
 
 class Inverted_Index:
     def __init__(self):
@@ -98,23 +114,46 @@ class Inverted_Index:
         # take a boolean query and return the list of correct submission ID
         print("Not implemented")
 
-# Fetch data
-fetcher_object = Fetcher(reddit)
-list_of_ids = fetcher_object.get_top_submission_ids(sub= sys.argv[1], no_of_submissions=1)
-for i in list_of_ids:
-    fetcher_object.get_submission_comment_ids(i)
-storage_object = fetcher_object.comment_id_storage
-preprocess_object = PreprocessData()
-# Preprocess data
-for k, v in storage_object.items():
-    temp = []
-    for comment_id in v:
-        temp.append(preprocess_object.remove_stop_words(comment_id))
-    storage_object[k] = temp
-# Create Inverted Index
-final_index = Inverted_Index()
-for k,v in storage_object.items():
-    final_index.index_comment(k, v)
+class MongoDB:
 
-final_index.index.update({k: sorted(v) for k, v in final_index.index.items()}) # sorting postings list in ascending order of submission ID
-print("inverted index is ", final_index.index)
+    def insert_doc(self, collection, post):
+        """
+        """
+        collection.update(post, post, upsert= True)
+
+
+# Get the list of submission ids and add each submission id, title and comments
+# into each document
+fetcher_object = Fetcher(reddit)
+fetcher_object.get_top_submission_ids(sub= sys.argv[1], no_of_submissions=2)
+[fetcher_object.get_submission_comment_ids(sub_id) for sub_id in fetcher_object.submission_ids]
+storage_object = fetcher_object.comment_id_storage
+
+client = MongoClient()
+db = client.reddit_submission_data
+collection = db.submission_info_collection
+
+db_object = MongoDB()
+preprocess_object = PreprocessData()
+
+post = {}
+for ids in fetcher_object.submission_ids:
+    post["submission_id"] = ids
+    post["title"] = fetcher_object.get_submission_text(ids)
+    list_of_top_comments_for_sub = storage_object[ids]
+    for j in range(len(list_of_top_comments_for_sub)):
+        key_j = 'comment_{}'.format(j)  # a string depending on j
+        post[key_j] = preprocess_object.remove_stop_words(list_of_top_comments_for_sub[j])
+    db_object.insert_doc(collection, post)
+    post.clear()
+
+#query indexing
+collection.create_index([("$**", 'text')])
+
+cursor = (collection.find(
+            {"$text": {"$search": "dog"}},
+            {"score": {'$meta': "textScore"}}).sort([('score', {'$meta': 'textScore'})])
+        ).limit(5)
+for doc in cursor:
+    print(doc.get('score'))
+    print (doc.get('_id'))
